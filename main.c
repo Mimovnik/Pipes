@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,11 +11,20 @@
 #define INPUT_BUFFER_SIZE 64
 #define CONTINUE 1
 #define EXIT 0
+#define FIFO "mypipe"
 
 void strupper(char *str) {
   for (int i = 0; i < strlen(str); i++) {
     if (str[i] >= 'a' && str[i] <= 'z') {
       str[i] = toupper((unsigned char)str[i]);
+    }
+  }
+}
+
+void strdotnumbers(char *str) {
+  for (int i = 0; i < strlen(str); i++) {
+    if (str[i] >= '0' && str[i] <= '9') {
+      str[i] = '.';
     }
   }
 }
@@ -58,7 +68,7 @@ void transform(int pipe1[2], int pipe2[2], int pid) {
     read(pipe1[READ], &status, sizeof(status));
 
     if (status == EXIT) {
-      puts("TRANSFORM: quits.\n");
+      puts("TRANSFORM1: quits.\n");
       write(pipe2[WRITE], &status, sizeof(status));
       close(pipe1[READ]);
       close(pipe2[WRITE]);
@@ -68,20 +78,22 @@ void transform(int pipe1[2], int pipe2[2], int pid) {
 
     char message[INPUT_BUFFER_SIZE];
     read(pipe1[READ], &message, sizeof(message));
-    printf("TRANSFORM: transforms '%s' to uppercase and sleeps for a while.\n",
+    printf("TRANSFORM1: transforms '%s' to uppercase and sleeps for a while.\n",
            message);
     strupper(message);
     sleep(5);
 
     write(pipe2[WRITE], &status, sizeof(status));
 
-    printf("TRANSFORM: writes transformed '%s' to pipe2.\n", message);
+    printf("TRANSFORM1: writes transformed '%s' to pipe2.\n", message);
     write(pipe2[WRITE], &message, sizeof(message));
   }
 }
 
-// prints transformed message
-void display(int pipe1[2], int pipe2[2]) {
+// transforms numbers to dots and sends
+void transform2(int pipe1[2], int pipe2[2]) {
+  int mypipe;
+  mypipe = open(FIFO, O_WRONLY);
   close(pipe1[READ]);
   close(pipe2[WRITE]);
   close(pipe2[WRITE]);
@@ -89,14 +101,24 @@ void display(int pipe1[2], int pipe2[2]) {
     int status;
     read(pipe2[READ], &status, sizeof(status));
     if (status == EXIT) {
-      puts("DISPLAY: quits.\n");
+      puts("TRANSFORM2: quits.\n");
+      write(mypipe, &status, sizeof(status));
       close(pipe1[READ]);
       close(pipe2[WRITE]);
+      close(mypipe);
       exit(0);
     }
     char message[INPUT_BUFFER_SIZE];
     read(pipe2[READ], &message, sizeof(message));
-    printf("DISPLAY: has read '%s' from pipe2.\n", message);
+    printf(
+        "TRANSFORM2: transforms '%s' numbers to dots and sleeps for a while.\n",
+        message);
+    strdotnumbers(message);
+    sleep(5);
+
+    write(mypipe, &status, sizeof(status));
+
+    write(mypipe, &message, sizeof(message));
   }
 }
 
@@ -124,7 +146,7 @@ int main() {
     if (pid2 != 0) {
       transform(pipe1, pipe2, pid2);
     } else {
-      display(pipe1, pipe2);
+      transform2(pipe1, pipe2);
     }
   }
 }
